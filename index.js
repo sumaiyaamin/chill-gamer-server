@@ -11,7 +11,6 @@ app.use(express.json());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.osfm1.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
     serverApi: {
         version: ServerApiVersion.v1,
@@ -22,10 +21,8 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        // Connect the client to the server
         await client.connect();
 
-        // Database and Collections
         const db = client.db("chillGamerDB");
         const reviewCollection = db.collection("reviews");
         const watchlistCollection = db.collection("watchlist");
@@ -33,11 +30,26 @@ async function run() {
         // POST - Add a new game review
         app.post('/reviews', async (req, res) => {
             try {
-                const review = req.body;
-                review.createdAt = new Date(); 
+                const review = {
+                    ...req.body,
+                    createdAt: new Date(),
+                    rating: parseFloat(req.body.rating), 
+                    releaseYear: parseInt(req.body.releaseYear), 
+                    price: req.body.price ? parseFloat(req.body.price) : 0, 
+                };
+
+                
+                const requiredFields = ['title', 'image', 'genre', 'platform', 'rating', 'description'];
+                for (const field of requiredFields) {
+                    if (!review[field]) {
+                        return res.status(400).json({ message: `${field} is required` });
+                    }
+                }
+
                 const result = await reviewCollection.insertOne(review);
-                res.json(result);
+                res.status(201).json(result);
             } catch (error) {
+                console.error('Error adding review:', error);
                 res.status(500).json({ message: error.message });
             }
         });
@@ -47,11 +59,34 @@ async function run() {
             try {
                 const games = await reviewCollection
                     .find()
-                    .sort({ rating: -1 }) // descending order
+                    .project({
+                        title: 1,
+                        image: 1,
+                        genre: 1,
+                        platform: 1,
+                        releaseYear: 1,
+                        rating: 1,
+                        description: 1,
+                        publisher: 1,
+                        price: 1
+                    })
+                    .sort({ 
+                        rating: -1, 
+                        createdAt: -1 
+                    })
                     .limit(6)
                     .toArray();
-                res.json(games);
+
+             
+                const formattedGames = games.map(game => ({
+                    ...game,
+                    rating: parseFloat(game.rating).toFixed(1), 
+                    price: game.price ? `$${parseFloat(game.price).toFixed(2)}` : 'N/A'
+                }));
+
+                res.json(formattedGames);
             } catch (error) {
+                console.error('Error fetching highest rated games:', error);
                 res.status(500).json({ message: error.message });
             }
         });
@@ -59,7 +94,10 @@ async function run() {
         // GET - Get all reviews
         app.get('/reviews', async (req, res) => {
             try {
-                const reviews = await reviewCollection.find().toArray();
+                const reviews = await reviewCollection
+                    .find()
+                    .sort({ createdAt: -1 }) 
+                    .toArray();
                 res.json(reviews);
             } catch (error) {
                 res.status(500).json({ message: error.message });
@@ -68,16 +106,9 @@ async function run() {
 
 
        
-
-       
-
         
+    
 
-       
-
-       
-
-        // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
@@ -85,6 +116,7 @@ async function run() {
         // await client.close();
     }
 }
+
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
