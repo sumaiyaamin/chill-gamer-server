@@ -26,8 +26,75 @@ async function run() {
         const db = client.db("chillGamerDB");
         const reviewCollection = db.collection("reviews");
         const watchlistCollection = db.collection("watchlist");
+        const userCollection = db.collection("users"); 
 
-        // POST - Add a new game review
+        // User related APIs
+
+        // POST - Save user to database
+        app.post('/users', async (req, res) => {
+            try {
+                const user = req.body;
+                
+                
+                const query = { email: user.email };
+                const existingUser = await userCollection.findOne(query);
+                
+                if (existingUser) {
+                    return res.send({ message: 'User already exists' });
+                }
+
+                const result = await userCollection.insertOne({
+                    ...user,
+                    createdAt: new Date(),
+                    reviews: [],
+                    watchlist: []
+                });
+                
+                res.status(201).json(result);
+            } catch (error) {
+                console.error('Error saving user:', error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+        // GET - Get user by email
+        app.get('/users/:email', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const user = await userCollection.findOne({ email });
+                
+                if (!user) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+
+                res.json(user);
+            } catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+        // PATCH - Update user profile
+        app.patch('/users/:email', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const updatedData = req.body;
+                
+                const result = await userCollection.updateOne(
+                    { email },
+                    { $set: updatedData }
+                );
+
+                if (result.matchedCount === 0) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+
+                res.json({ message: 'Profile updated successfully' });
+            } catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+      
         app.post('/reviews', async (req, res) => {
             try {
                 const review = {
@@ -38,7 +105,6 @@ async function run() {
                     price: req.body.price ? parseFloat(req.body.price) : 0, 
                 };
 
-                
                 const requiredFields = ['title', 'image', 'genre', 'platform', 'rating', 'description'];
                 for (const field of requiredFields) {
                     if (!review[field]) {
@@ -47,6 +113,15 @@ async function run() {
                 }
 
                 const result = await reviewCollection.insertOne(review);
+
+                
+                if (review.userEmail) {
+                    await userCollection.updateOne(
+                        { email: review.userEmail },
+                        { $push: { reviews: result.insertedId } }
+                    );
+                }
+
                 res.status(201).json(result);
             } catch (error) {
                 console.error('Error adding review:', error);
@@ -77,7 +152,6 @@ async function run() {
                     .limit(6)
                     .toArray();
 
-             
                 const formattedGames = games.map(game => ({
                     ...game,
                     rating: parseFloat(game.rating).toFixed(1), 
@@ -104,10 +178,26 @@ async function run() {
             }
         });
 
+        // GET - Get user's reviews
+        app.get('/users/:email/reviews', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const user = await userCollection.findOne({ email });
+                
+                if (!user) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
 
-       
-        
-    
+                const reviews = await reviewCollection
+                    .find({ userEmail: email })
+                    .sort({ createdAt: -1 })
+                    .toArray();
+
+                res.json(reviews);
+            } catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
