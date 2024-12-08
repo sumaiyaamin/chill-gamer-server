@@ -5,7 +5,7 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-//middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -34,8 +34,6 @@ async function run() {
         app.post('/users', async (req, res) => {
             try {
                 const user = req.body;
-                
-                
                 const query = { email: user.email };
                 const existingUser = await userCollection.findOne(query);
                 
@@ -94,7 +92,7 @@ async function run() {
             }
         });
 
-      
+        // Review APIs
         app.post('/reviews', async (req, res) => {
             try {
                 const review = {
@@ -114,7 +112,6 @@ async function run() {
 
                 const result = await reviewCollection.insertOne(review);
 
-                
                 if (review.userEmail) {
                     await userCollection.updateOne(
                         { email: review.userEmail },
@@ -125,6 +122,102 @@ async function run() {
                 res.status(201).json(result);
             } catch (error) {
                 console.error('Error adding review:', error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+        // Watchlist APIs
+        // POST - Add to watchlist
+        app.post('/watchlist/add', async (req, res) => {
+            try {
+                const watchlistItem = {
+                    ...req.body,
+                    addedAt: new Date()
+                };
+
+                // Check if already in watchlist
+                const existingItem = await watchlistCollection.findOne({
+                    reviewId: watchlistItem.reviewId,
+                    userEmail: watchlistItem.userEmail
+                });
+
+                if (existingItem) {
+                    return res.status(400).json({ message: 'Already in watchlist' });
+                }
+
+                const result = await watchlistCollection.insertOne(watchlistItem);
+
+                // Update user's watchlist array
+                await userCollection.updateOne(
+                    { email: watchlistItem.userEmail },
+                    { $push: { watchlist: watchlistItem.reviewId } }
+                );
+
+                res.status(201).json(result);
+            } catch (error) {
+                console.error('Error adding to watchlist:', error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+        // GET - Check if review is in watchlist
+        app.get('/watchlist/check/:reviewId', async (req, res) => {
+            try {
+                const reviewId = req.params.reviewId;
+                const userEmail = req.query.userEmail; // Assuming userEmail is passed as a query parameter
+
+                const watchlistItem = await watchlistCollection.findOne({
+                    reviewId: reviewId,
+                    userEmail: userEmail
+                });
+
+                res.json({ isInWatchlist: !!watchlistItem });
+            } catch (error) {
+                console.error('Error checking watchlist:', error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+        // GET - Get user's watchlist
+        app.get('/users/:email/watchlist', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const watchlistItems = await watchlistCollection
+                    .find({ userEmail: email })
+                    .sort({ addedAt: -1 })
+                    .toArray();
+
+                res.json(watchlistItems);
+            } catch (error) {
+                console.error('Error fetching watchlist:', error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+
+        // DELETE - Remove from watchlist
+        app.delete('/watchlist/:reviewId', async (req, res) => {
+            try {
+                const reviewId = req.params.reviewId;
+                const userEmail = req.query.userEmail; // Assuming userEmail is passed as a query parameter
+
+                const result = await watchlistCollection.deleteOne({
+                    reviewId: reviewId,
+                    userEmail: userEmail
+                });
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).json({ message: 'Item not found in watchlist' });
+                }
+
+                // Remove from user's watchlist array
+                await userCollection.updateOne(
+                    { email: userEmail },
+                    { $pull: { watchlist: reviewId } }
+                );
+
+                res.json({ message: 'Removed from watchlist successfully' });
+            } catch (error) {
+                console.error('Error removing from watchlist:', error);
                 res.status(500).json({ message: error.message });
             }
         });
@@ -210,9 +303,9 @@ async function run() {
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
-    res.send('Chill Gamer server is running')
+    res.send('Chill Gamer server is running');
 });
 
 app.listen(port, () => {
-    console.log(`Chill Gamer server is running on port : ${port}`)
+    console.log(`Chill Gamer server is running on port: ${port}`);
 });
