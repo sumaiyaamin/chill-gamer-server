@@ -175,45 +175,48 @@ async function run() {
         });
 
         // DELETE - Delete review
-        app.delete('/reviews/:id', async (req, res) => {
-            try {
-                const id = req.params.id;
-                const userEmail = req.query.userEmail;
+app.delete('/reviews/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const userEmail = req.query.userEmail;
 
-                if (!userEmail) {
-                    return res.status(400).json({ message: 'User email is required' });
-                }
+        if (!userEmail) {
+            return res.status(400).json({ message: 'User email is required' });
+        }
 
-                // Verify ownership
-                const review = await reviewCollection.findOne({ _id: new ObjectId(id) });
-                if (!review) {
-                    return res.status(404).json({ message: 'Review not found' });
-                }
-                if (review.userEmail !== userEmail) {
-                    return res.status(403).json({ message: 'Not authorized to delete this review' });
-                }
+        // Verify ownership
+        const review = await reviewCollection.findOne({ _id: new ObjectId(id) });
+        if (!review) {
+            return res.status(404).json({ message: 'Review not found' });
+        }
+        if (review.userEmail !== userEmail) {
+            return res.status(403).json({ message: 'Not authorized to delete this review' });
+        }
 
-                const result = await reviewCollection.deleteOne({ _id: new ObjectId(id) });
+        const result = await reviewCollection.deleteOne({ _id: new ObjectId(id) });
 
-                if (result.deletedCount === 0) {
-                    return res.status(404).json({ message: 'Review not found' });
-                }
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'Review not found' });
+        }
 
-                // Remove review ID from user's reviews array
-                await userCollection.updateOne(
-                    { email: userEmail },
-                    { $pull: { reviews: new ObjectId(id) } }
-                );
+        // Remove review ID from user's reviews array
+        await userCollection.updateOne(
+            { email: userEmail },
+            { $pull: { reviews: new ObjectId(id) } }
+        );
 
-                // Remove from watchlist if exists
-                await watchlistCollection.deleteMany({ reviewId: id });
+        // Remove from watchlist if exists
+        await watchlistCollection.deleteMany({ reviewId: id });
 
-                res.json({ message: 'Review deleted successfully' });
-            } catch (error) {
-                console.error('Error deleting review:', error);
-                res.status(500).json({ message: error.message });
-            }
+        res.json({ 
+            success: true,
+            message: 'Review deleted successfully' 
         });
+    } catch (error) {
+        console.error('Error deleting review:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
 
         // GET - Get highest rated games
         app.get('/highest-rated-games', async (req, res) => {
