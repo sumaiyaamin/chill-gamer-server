@@ -22,19 +22,34 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        await client.connect();
+        //await client.connect();
 
         const db = client.db("chillGamerDB");
         const reviewCollection = db.collection("reviews");
         const watchlistCollection = db.collection("watchlist");
         const userCollection = db.collection("users");
 
-        // Create indexes
-        await reviewCollection.createIndex({ rating: -1, createdAt: -1 });
-        await watchlistCollection.createIndex({ userEmail: 1, reviewId: 1 }, { unique: true });
-        await userCollection.createIndex({ email: 1 }, { unique: true });
+        // //Create indexes
+        // await reviewCollection.createIndex({ rating: -1, createdAt: -1 });
+        // await watchlistCollection.createIndex({ userEmail: 1, reviewId: 1 }, { unique: true });
+        // await userCollection.createIndex({ email: 1 }, { unique: true });
 
         // User APIs
+
+        app.get('/users', async (req, res) => {
+            try {
+                const users = await userCollection
+                    .find()
+                    .sort({ createdAt: -1 })
+                    .toArray();
+        
+                res.status(200).json(users);
+            } catch (error) {
+                console.error('Error fetching users:', error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+
         app.post('/users', async (req, res) => {
             try {
                 const user = req.body;
@@ -58,6 +73,40 @@ async function run() {
                 res.status(500).json({ message: error.message });
             }
         });
+        
+
+// POST - User Login
+app.post('/login', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await userCollection.findOne({ email });
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Update last login timestamp
+        await userCollection.updateOne(
+            { email },
+            { $set: { lastLogin: new Date() } }
+        );
+
+        res.status(200).json({
+            message: 'Login successful',
+            user: {
+                name: user.name,
+                email: user.email,
+                photoURL: user.photoURL,
+                role: user.role,
+                reviews: user.reviews,
+                watchlist: user.watchlist
+            }
+        });
+    } catch (error) {
+        console.error('Error during login:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
 
         // Review APIs
         app.post('/reviews', async (req, res) => {
@@ -175,7 +224,7 @@ async function run() {
         });
 
         // DELETE - Delete review
-app.delete('/reviews/:id', async (req, res) => {
+       app.delete('/reviews/:id', async (req, res) => {
     try {
         const id = req.params.id;
         const userEmail = req.query.userEmail;
@@ -384,7 +433,7 @@ app.delete('/reviews/:id', async (req, res) => {
         });
 
         // Server health check
-        await client.db("admin").command({ ping: 1 });
+        //await client.db("admin").command({ ping: 1 });
         console.log("Connected to MongoDB!");
     } finally {
         // Keep connection alive
